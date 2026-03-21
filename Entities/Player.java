@@ -12,6 +12,9 @@ import ImageManager.AtlasLoader;
 import ImageManager.Animation;
 
 public class Player {
+
+    public enum PowerUpType { NONE, SPEED_BOOST, TIMER_FREEZE }
+
     private double x, y;
     private double vx, vy;
 
@@ -22,6 +25,8 @@ public class Player {
     private static final double JUMP_VELOCITY = -15;
     private static final double MOVE_SPEED = 5;
     private static final double MAX_FALL_SPEED = 15;
+    private static final double SPEED_BOOST_MULTIPLIER = 1.8;
+    private static final int POWER_UP_DURATION_TICKS = 250; // ~5 seconds at 50fps
 
     private boolean onGround;
     private boolean facingRight;
@@ -44,6 +49,10 @@ public class Player {
     private int collectEffectTimer;
     private static final int COLLECT_EFFECT_DURATION = 40;
 
+    // Active power-up state
+    private PowerUpType activePowerUp;
+    private int powerUpTicksLeft;
+
     public Player(double x, double y) {
         this.x = x;
         this.y = y;
@@ -57,6 +66,8 @@ public class Player {
         this.animalsCollected = 0;
         this.collectEffectTimer = 0;
         this.hasAtlasSprites = false;
+        this.activePowerUp = PowerUpType.NONE;
+        this.powerUpTicksLeft = 0;
 
         loadAtlasSprites();
     }
@@ -118,12 +129,14 @@ public class Player {
     }
 
     public void update(boolean left, boolean right, boolean jump, ArrayList<Platform> platforms) {
-        // Horizontal movement
+        // Horizontal movement (boosted if SPEED_BOOST active)
+        double currentSpeed = MOVE_SPEED *
+            (activePowerUp == PowerUpType.SPEED_BOOST ? SPEED_BOOST_MULTIPLIER : 1.0);
         if (left) {
-            vx = -MOVE_SPEED;
+            vx = -currentSpeed;
             facingRight = false;
         } else if (right) {
-            vx = MOVE_SPEED;
+            vx = currentSpeed;
             facingRight = true;
         } else {
             vx = 0;
@@ -176,6 +189,12 @@ public class Player {
         // Collect effect countdown
         if (collectEffectTimer > 0) {
             collectEffectTimer--;
+        }
+
+        // Power-up countdown
+        if (powerUpTicksLeft > 0) {
+            powerUpTicksLeft--;
+            if (powerUpTicksLeft == 0) activePowerUp = PowerUpType.NONE;
         }
 
         if (onGround) isJumping = false;
@@ -345,6 +364,25 @@ public class Player {
     public void collectAnimal() {
         animalsCollected++;
         collectEffectTimer = COLLECT_EFFECT_DURATION;
+    }
+
+    public void applyPowerUp(PowerUpType type) {
+        activePowerUp    = type;
+        powerUpTicksLeft = POWER_UP_DURATION_TICKS;
+    }
+
+    public PowerUpType getActivePowerUp() { return activePowerUp; }
+    public boolean isTimerFrozen() { return activePowerUp == PowerUpType.TIMER_FREEZE; }
+
+    /** Returns a display string for the current effect, or null if none. */
+    public String getActivePowerUpLabel() {
+        if (activePowerUp == PowerUpType.NONE) return null;
+        int secs = (powerUpTicksLeft + 49) / 50;
+        switch (activePowerUp) {
+            case SPEED_BOOST:  return "Speed Boost (" + secs + "s)";
+            case TIMER_FREEZE: return "Timer Frozen (" + secs + "s)";
+            default: return null;
+        }
     }
 
     public Rectangle2D.Double getBounds() {

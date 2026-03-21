@@ -2,7 +2,9 @@ package MapManager;
 
 import Entities.Animal;
 import Entities.Platform;
+import Entities.PowerUp;
 import Entities.Tree;
+import ImageManager.AtlasLoader;
 import ImageManager.ImageManager;
 
 import java.awt.image.BufferedImage;
@@ -16,11 +18,13 @@ public class GameMap {
     private ArrayList<Platform> platforms;
     private ArrayList<Tree> trees;
     private ArrayList<Animal> animals;
+    private ArrayList<PowerUp> powerUps;
 
     public GameMap() {
         platforms = new ArrayList<>();
-        trees = new ArrayList<>();
-        animals = new ArrayList<>();
+        trees     = new ArrayList<>();
+        animals   = new ArrayList<>();
+        powerUps  = new ArrayList<>();
         generateLevel();
     }
 
@@ -77,7 +81,7 @@ public class GameMap {
                                "0010", "0011", "0012", "0013",
                                "0018", "0019", "0020", "0023"};
 
-        int numAnimals = 8 + rand.nextInt(8); // 8 to 15 animals
+        int numAnimals = 10 + rand.nextInt(11); // 10 to 20 animals
         int numFloating = platforms.size() - numGroundSegments;
 
         for (int i = 0; i < numAnimals; i++) {
@@ -98,11 +102,27 @@ public class GameMap {
             BufferedImage img = ImageManager.loadBufferedImage(animalFile);
             animals.add(new Animal(ax, ay, img));
         }
+        // ===== Power-ups (StarActor sprites from atlas) =====
+        AtlasLoader atlas = new AtlasLoader("Entities/PlayerSprite.atlas");
+        ArrayList<BufferedImage> starFrames = atlas.getFrameImages("StarActor");
+
+        int numPowerUps = 2 + rand.nextInt(3); // 2-4 power-ups per level
+        for (int i = 0; i < numPowerUps; i++) {
+            PowerUp.Type type = rand.nextBoolean()
+                ? PowerUp.Type.SPEED_BOOST
+                : PowerUp.Type.TIMER_FREEZE;
+            int platIdx = numGroundSegments + rand.nextInt(numFloating);
+            Platform plat = platforms.get(platIdx);
+            int px = plat.getX() + rand.nextInt(Math.max(1, plat.getWidth() - 40));
+            int py = plat.getY() - 52;
+            powerUps.add(new PowerUp(px, py, type, starFrames));
+        }
     }
 
     public ArrayList<Platform> getPlatforms() { return platforms; }
-    public ArrayList<Tree> getTrees() { return trees; }
-    public ArrayList<Animal> getAnimals() { return animals; }
+    public ArrayList<Tree>     getTrees()     { return trees; }
+    public ArrayList<Animal>   getAnimals()   { return animals; }
+    public ArrayList<PowerUp>  getPowerUps()  { return powerUps; }
     public int getTotalAnimals() { return animals.size(); }
 
     public int getCollectedCount() {

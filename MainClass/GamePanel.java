@@ -5,16 +5,15 @@ import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.KeyListener;
 import java.awt.image.BufferedImage;
-import java.util.ArrayList;
 
 import Entities.Animal;
 import Entities.Platform;
 import Entities.Player;
+import Entities.PowerUp;
 import Entities.Tree;
 import MapManager.Camera;
 import MapManager.GameMap;
 import SoundManager.SoundManager;
-import ImageManager.TintFX;
 
 public class GamePanel extends JPanel implements Runnable, KeyListener {
 
@@ -26,6 +25,7 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     private boolean isPaused;
     private boolean gameStarted;
     private boolean gameWon;
+    private boolean gameLost;
 
     private Player player;
     private GameMap gameMap;
@@ -37,8 +37,13 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     // Key states
     private boolean keyLeft, keyRight, keyUp, keyJump;
 
-    // Atmospheric tint effect
-    private TintFX atmosphereTint;
+    // HUD/game-state timing
+    private static final int GAME_DURATION_MS = 60_000;
+    private int remainingTimeMs;
+
+    // FPS tracker
+    private int currentFps;
+
 
     public GamePanel() {
         setPreferredSize(new Dimension(PWIDTH, PHEIGHT));
@@ -50,10 +55,13 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         isPaused = false;
         gameStarted = false;
         gameWon = false;
+        gameLost = false;
+        remainingTimeMs = GAME_DURATION_MS;
+        currentFps = 0;
 
         soundManager = SoundManager.getInstance();
         dbImage = new BufferedImage(PWIDTH, PHEIGHT, BufferedImage.TYPE_INT_ARGB);
-        atmosphereTint = new TintFX(0, 0, 0);
+        //atmosphereTint = new TintFX(0, 0, 0);
 
         // Render initial start screen
         gameRender();
@@ -78,8 +86,11 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
             createGameEntities();
             gameStarted = true;
             gameWon = false;
+            gameLost = false;
             isPaused = false;
             isRunning = true;
+            remainingTimeMs = GAME_DURATION_MS;
+            currentFps = 0;
             keyLeft = keyRight = keyUp = keyJump = false;
 
             gameThread = new Thread(this);
@@ -108,13 +119,30 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
 
     @Override
     public void run() {
+        long lastTick = System.currentTimeMillis();
+        long fpsWindowStart = lastTick;
+        int frameCounter = 0;
+
         try {
             while (isRunning) {
+                long now = System.currentTimeMillis();
+                int elapsedMs = (int) (now - lastTick);
+                if (elapsedMs < 0) elapsedMs = 0;
+                lastTick = now;
+
                 if (!isPaused) {
-                    gameUpdate();
+                    gameUpdate(elapsedMs);
                 }
                 gameRender();
                 paintScreen();
+
+                frameCounter++;
+                if (now - fpsWindowStart >= 1000) {
+                    currentFps = frameCounter;
+                    frameCounter = 0;
+                    fpsWindowStart = now;
+                }
+
                 Thread.sleep(20); // ~50 FPS
             }
         } catch (InterruptedException e) {
@@ -122,8 +150,19 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         }
     }
 
-    private void gameUpdate() {
-        if (player == null || gameWon) return;
+    private void gameUpdate(int elapsedMs) {
+        if (player == null || gameWon || gameLost) return;
+
+        if (!player.isTimerFrozen()) {
+            remainingTimeMs -= elapsedMs;
+        }
+        if (remainingTimeMs <= 0) {
+            remainingTimeMs = 0;
+            gameLost = true;
+            isRunning = false;
+            soundManager.stopClip("background");
+            return;
+        }
 
         player.update(keyLeft, keyRight, keyJump || keyUp, gameMap.getPlatforms());
 
@@ -142,8 +181,23 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
             }
         }
 
+        // Power-up pickup
+        for (PowerUp pu : gameMap.getPowerUps()) {
+            pu.update();
+            if (!pu.isCollected() && player.getBounds().intersects(pu.getBounds())) {
+                pu.collect();
+                Player.PowerUpType effect = (pu.getType() == PowerUp.Type.SPEED_BOOST)
+                    ? Player.PowerUpType.SPEED_BOOST
+                    : Player.PowerUpType.TIMER_FREEZE;
+                player.applyPowerUp(effect);
+                soundManager.playClip("collect", false);
+            }
+        }
+
         if (gameMap.getCollectedCount() == gameMap.getTotalAnimals()) {
             gameWon = true;
+            isRunning = false;
+            soundManager.stopClip("background");
             soundManager.playClip("win", false);
         }
     }
@@ -176,6 +230,9 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
             for (Animal animal : gameMap.getAnimals()) {
                 animal.draw(g2, camX, camY);
             }
+            for (PowerUp pu : gameMap.getPowerUps()) {
+                pu.draw(g2, camX, camY);
+            }
         }
 
         if (player != null) {
@@ -186,6 +243,7 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
 
         if (isPaused) drawPauseOverlay(g2);
         if (gameWon) drawWinScreen(g2);
+        if (gameLost) drawLoseScreen(g2);
 
         g2.dispose();
     }
@@ -258,6 +316,35 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         String scoreText = gameMap.getCollectedCount() + " / " + gameMap.getTotalAnimals() + " Animals";
         g2.drawString(scoreText, 55, 39);
 
+        // Timer (top-right)
+        g2.setColor(new Color(0, 0, 0, 140));
+        g2.fillRoundRect(PWIDTH - 170, 10, 155, 45, 12, 12);
+        g2.setFont(new Font("Arial", Font.BOLD, 20));
+        g2.setColor(new Color(255, 255, 255));
+        g2.drawString("Time: " + Math.max(0, remainingTimeMs / 1000), PWIDTH - 155, 39);
+
+        // FPS counter
+        g2.setColor(new Color(0, 0, 0, 110));
+        g2.fillRoundRect(10, 60, 100, 28, 10, 10);
+        g2.setFont(new Font("Arial", Font.BOLD, 14));
+        g2.setColor(new Color(220, 255, 220));
+        g2.drawString("FPS: " + currentFps, 22, 79);
+
+        // Active effect indicator (directly below FPS)
+        String effectLabel = player.getActivePowerUpLabel();
+        boolean hasEffect  = effectLabel != null;
+        g2.setColor(hasEffect ? new Color(0, 0, 0, 160) : new Color(0, 0, 0, 80));
+        g2.fillRoundRect(10, 93, 185, 28, 10, 10);
+        g2.setFont(new Font("Arial", Font.BOLD, 13));
+        if (hasEffect) {
+            g2.setColor(player.getActivePowerUp() == Player.PowerUpType.SPEED_BOOST
+                ? new Color(100, 220, 255) : new Color(255, 220, 60));
+            g2.drawString(effectLabel, 18, 112);
+        } else {
+            g2.setColor(new Color(180, 180, 180, 130));
+            g2.drawString("No Active Effect", 18, 112);
+        }
+
         // Controls hint
         g2.setColor(new Color(255, 255, 255, 100));
         g2.setFont(new Font("Arial", Font.PLAIN, 11));
@@ -292,7 +379,7 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
 
         g2.setColor(Color.WHITE);
         g2.setFont(new Font("Arial", Font.PLAIN, 24));
-        String sub = "All " + gameMap.getTotalAnimals() + " animals collected!";
+        String sub = "All " + gameMap.getTotalAnimals() + " animals collected in time!";
         fm = g2.getFontMetrics();
         g2.drawString(sub, (PWIDTH - fm.stringWidth(sub)) / 2, PHEIGHT / 2 + 30);
 
@@ -300,6 +387,29 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
         String restart = "Press End Game then Start Game to play again";
         fm = g2.getFontMetrics();
         g2.setColor(new Color(200, 200, 200));
+        g2.drawString(restart, (PWIDTH - fm.stringWidth(restart)) / 2, PHEIGHT / 2 + 70);
+    }
+
+    private void drawLoseScreen(Graphics2D g2) {
+        g2.setColor(new Color(0, 0, 0, 180));
+        g2.fillRect(0, 0, PWIDTH, PHEIGHT);
+
+        g2.setColor(new Color(255, 120, 120));
+        g2.setFont(new Font("Arial", Font.BOLD, 52));
+        String text = "TIME UP!";
+        FontMetrics fm = g2.getFontMetrics();
+        g2.drawString(text, (PWIDTH - fm.stringWidth(text)) / 2, PHEIGHT / 2 - 20);
+
+        g2.setColor(Color.WHITE);
+        g2.setFont(new Font("Arial", Font.PLAIN, 24));
+        String sub = "You failed to collect all animals in 30 seconds.";
+        fm = g2.getFontMetrics();
+        g2.drawString(sub, (PWIDTH - fm.stringWidth(sub)) / 2, PHEIGHT / 2 + 30);
+
+        g2.setFont(new Font("Arial", Font.PLAIN, 16));
+        String restart = "Press Start Game to try again";
+        fm = g2.getFontMetrics();
+        g2.setColor(new Color(210, 210, 210));
         g2.drawString(restart, (PWIDTH - fm.stringWidth(restart)) / 2, PHEIGHT / 2 + 70);
     }
 
