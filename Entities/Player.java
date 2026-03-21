@@ -232,8 +232,8 @@ public class Player {
                         vy = 0;
                         onGround = true;
                     }
-                } else if (vy < 0 && p.isGround()) {
-                    // Only block upward for ground segments
+                } else if (vy < 0) {
+                    // Block upward movement for all platforms
                     y = p.getY() + p.getHeight();
                     vy = 0;
                 }
