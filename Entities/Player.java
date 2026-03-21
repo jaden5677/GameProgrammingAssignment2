@@ -22,7 +22,7 @@ public class Player {
     public static final int HEIGHT = 48;
 
     private static final double GRAVITY = 0.6;
-    private static final double JUMP_VELOCITY = -15;
+    private static final double JUMP_VELOCITY = -17;
     private static final double MOVE_SPEED = 5;
     private static final double MAX_FALL_SPEED = 15;
     private static final double SPEED_BOOST_MULTIPLIER = 1.8;
@@ -164,10 +164,10 @@ public class Player {
 
         // World bounds
         if (x < 0) x = 0;
-        if (x + WIDTH > 4000) x = 4000 - WIDTH;
+        if (x + WIDTH > 6000) x = 6000 - WIDTH;
 
         // Fall off world -> respawn
-        if (y > 1100) {
+        if (y > 1600) {
             respawn();
         }
 

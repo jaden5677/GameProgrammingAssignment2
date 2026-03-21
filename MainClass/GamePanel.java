@@ -38,7 +38,7 @@ public class GamePanel extends JPanel implements Runnable, KeyListener {
     private boolean keyLeft, keyRight, keyUp, keyJump;
 
     // HUD/game-state timing
-    private static final int GAME_DURATION_MS = 60_000;
+    private static final int GAME_DURATION_MS = 115_000;
     private int remainingTimeMs;
 
     // FPS tracker
